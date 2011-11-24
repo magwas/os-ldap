@@ -1,0 +1,87 @@
+#!/usr/bin/python
+import sys
+import getpass
+import ldap
+import string
+import re
+
+l = ldap.open("127.0.0.1", 389)
+
+base="dc=maps,dc=benigni"
+
+res = l.search_s(
+	base,
+        ldap.SCOPE_SUBTREE,
+        "objectclass=zService",
+#       "objectclass=zService",
+      )
+
+sshconfig=[]
+sshcmdline=[]
+hosts=[]
+iptables=[]
+for entry in res:
+	iptables.append(
+		"bothtables -A lolo -p tcp -i lo -d 127.0.0.1 --dport %s -j ACCEPT" %(
+                               entry[1]['zBindPort'][0],
+			))
+
+        if ((entry[1]["dstzone"][0] == "localhost") and
+           (entry[1]["srczone"][0] != "localhost")):
+                sshcmdline.append((entry[0],
+                        " -R %s:%s:%s "%(
+                                entry[1]['zUserPort'][0],
+                                entry[1]['srczone'][0],
+                                entry[1]['zBindPort'][0],
+                                ),))
+        if ((entry[1]["dstzone"][0] != "localhost") and
+           (entry[1]["srczone"][0] == "localhost")):
+                sshcmdline.append((entry[0],
+                        " -L %s:%s:%s "%(
+                                entry[1]['zBindPort'][0],
+                                entry[1]['dstzone'][0],
+                                entry[1]['zUserPort'][0],
+                                ),))
+		if ((entry[1]["dstzone"][0] != "127.0.0.1") and
+			re.match("^[0-9\.]*$",entry[1]["dstzone"][0])):
+			iptables.append(
+				"iptables -t nat -A loout -p tcp -d %s --dport %s -j REDIRECT --to-ports %s" %(
+					entry[1]['dstzone'][0],
+					entry[1]['zUserPort'][0],
+					entry[1]['zBindPort'][0]))
+        if (entry[1]["srczone"][0] == "localhost"):
+		a=entry[0]
+		a=string.replace(a,","+base,"")
+		a=string.replace(a,"cn=","")
+		a=string.replace(a,",",".")
+                hosts.append(
+                        " %s "%(
+				a
+                                ))
+	        if entry[1]["zProtocol"][0] == "ssh":
+	                sshconfig.append(
+	                        "Host %s\n\tPort %s\n"%(
+					a,
+	                                entry[1]['zBindPort'][0],
+	                                ))
+			if entry[1].has_key("zAuthentication"):
+				sshconfig.append(
+					"\tUser %s\n"%(
+	                                	entry[1]['zAuthentication'][0],
+						))
+l.unbind()
+
+if sys.argv[1] == "hosts":
+        print "127.0.0.1        kusturica localhost %s\n"%(string.join(hosts,""),)
+if sys.argv[1] == "sshcmd":
+	cmdl=[]
+	for e in sshcmdline:
+		(cn,base)=string.split(e[0],",",1)
+		if base == sys.argv[2]:
+			cmdl.append(e[1])
+        print string.join(cmdl,"")
+if sys.argv[1] == "sshconfig":
+        print string.join(sshconfig,"")
+if sys.argv[1] == "iptables":
+        print string.join(iptables,"\n")
+	

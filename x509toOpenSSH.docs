@@ -1,0 +1,2 @@
+http://www.timof.qipc.org/x509toOpenSSH.c
+cc -o x509toOpenSSH x509toOpenSSH.c -lcrypto -lresolv
